@@ -1,7 +1,7 @@
 package main
 
-import "fmt"
+// import "fmt"
 
 func main() {
-  fmt.Println(f2("a4bc2d5e"))
+  f1()
 }
