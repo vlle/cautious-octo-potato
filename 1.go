@@ -10,18 +10,18 @@ package main
 */
 
 import (
-  "github.com/beevik/ntp"
-  "fmt"
-  "log"
-  "os"
+	"fmt"
+	"github.com/beevik/ntp"
+	"log"
+	"os"
 )
 
 func f1() {
-  l := log.New(os.Stderr, "", 0)
-  time, err := ntp.Time("ntp0.ntp-servers.net")
-  if err != nil {
-    l.Fatal(err)
-  } else {
-    fmt.Println(time)
-  }
+	l := log.New(os.Stderr, "", 0)
+	time, err := ntp.Time("ntp0.ntp-servers.net")
+	if err != nil {
+		l.Fatal(err)
+	} else {
+		fmt.Println(time)
+	}
 }

@@ -3,5 +3,5 @@ package main
 // import "fmt"
 
 func main() {
-  f1()
+	f1()
 }
