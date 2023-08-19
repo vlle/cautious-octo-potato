@@ -26,6 +26,183 @@ import (
 	"github.com/urfave/cli"
 )
 
+
+func cli_grep(c *cli.Context) {
+	filename := c.String("filename")
+	if filename == "" {
+		// c.App.Writer.Write([]byte("filename is empty\n"))
+		os.Exit(1)
+	}
+	file, err := os.Open(filename)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+
+	pattern := c.String("pattern")
+
+	flags := &grep_flags{
+		_after:   c.Int("A"),
+		_before:  c.Int("B"),
+		_context: c.Int("C"),
+		_civFn:   0,
+	}
+
+	if c.Int("C") != 0 {
+		flags._after = flags._context
+		flags._before = flags._context
+	}
+
+	if c.Bool("c") {
+		flags.set_count()
+	}
+	if c.Bool("i") {
+		flags.set_ignore_case()
+		pattern = "(?i)" + pattern
+	}
+	if c.Bool("v") {
+		flags.set_invert()
+	}
+	if c.Bool("F") {
+		flags.set_fixed()
+	}
+	if c.Bool("n") {
+		flags.set_line_num()
+	}
+
+	_, _ = grep_menu(scanner, pattern, flags)
+}
+
+
+func fixed_grep(scanner *bufio.Scanner, pattern string, f flags) ([]byte, error) {
+	line_num := 0
+	for scanner.Scan() {
+		txt := scanner.Text()
+		line_num++
+		if txt == pattern {
+			if f.line_num() {
+				fmt.Printf("%d:", line_num)
+			}
+			fmt.Printf("%s\n", txt)
+		}
+	}
+	return []byte{}, nil
+}
+
+
+func grep_context(file[]string, pattern *regexp.Regexp, f flags) {
+  for i := range file {
+    if pattern.MatchString(file[i]) {
+      print_before(f.before(), i, file)
+      fmt.Println(file[i])
+      print_after(f.after(), i, file)
+    }
+  }
+}
+
+
+func print_after(i, idx int, file[]string) {
+  for j := 1; j <= i; j++ {
+    if idx+j > len(file) {
+      break
+    }
+    fmt.Println(file[idx+j])
+  }
+}
+
+func print_before(i, idx int, file[]string) {
+  for j := i; j > 0; j-- {
+    if idx-j < 0 {
+      break
+    }
+    fmt.Println(file[idx-j])
+  }
+}
+
+func load_all_file(scanner *bufio.Scanner) []string {
+  res := []string{}
+	for scanner.Scan() {
+		res = append(res, scanner.Text())
+  }
+  return res
+}
+
+func grep(scanner *bufio.Scanner, search_pattern *regexp.Regexp, f flags) ([]byte, error) {
+	line_num := 0
+	count := 0
+	for scanner.Scan() {
+		txt := scanner.Text()
+		line_num++
+		if !search_pattern.MatchString(txt) && f.invert() {
+			if f.count() {
+				count++
+				continue
+			}
+			if f.line_num() {
+				fmt.Printf("%d:", line_num)
+			}
+      color.Red(txt)
+		} else {
+			if search_pattern.MatchString(txt) && !f.invert() {
+				if f.count() {
+					count++
+					continue
+				}
+				if f.line_num() {
+					fmt.Printf("%d:", line_num)
+				}
+        color.Red(txt)
+			}
+		}
+	}
+	if f.count() {
+		fmt.Println(count)
+	}
+	return []byte{}, nil
+}
+
+func grep_menu(scanner *bufio.Scanner, pattern string, f flags) ([]byte, error) {
+	if pattern == "" {
+		return []byte{}, nil
+	}
+	if f.fixed() {
+		fixed_grep(scanner, pattern, f)
+		return []byte{}, nil
+	}
+	var search_pattern = regexp.MustCompile(pattern)
+  if f.after() > 0 || f.before() > 0 || f.context() > 0 {
+    strings := load_all_file(scanner)
+    grep_context(strings, search_pattern, f)
+		return []byte{}, nil
+  }
+  return grep(scanner, search_pattern, f)
+}
+
+func main() {
+	app := cli.NewApp()
+	app.Action = cli_grep
+	app.Name = "grep utility"
+	app.Description = "a grep utility for L2 course at WB"
+	app.UsageText = "grep --filename [filename]"
+	app.Flags = []cli.Flag{
+		cli.StringFlag{Name: "filename", Usage: "a file to search"},
+		cli.StringFlag{Name: "pattern", Usage: "a pattern to search"},
+		cli.BoolFlag{Name: "n", Usage: "line num, напечатать номер строки"},
+		cli.BoolFlag{Name: "v", Usage: "invert search"},
+		cli.BoolFlag{Name: "F", Usage: "fixed search"},
+		cli.BoolFlag{Name: "i", Usage: "case insensitive search"},
+		cli.BoolFlag{Name: "c", Usage: "count matching strings"},
+		cli.IntFlag{Name: "A", Usage: "print N strings after match"},
+		cli.IntFlag{Name: "B", Usage: "print N strings before match"},
+		cli.IntFlag{Name: "C", Usage: "print N strings before and after match"},
+	}
+	app.Author = "Artemii"
+	app.Email = "vllemail@icloud.com"
+	app.Run(os.Args)
+}
+
+
 type flags interface {
 	after() int
 	before() int
@@ -94,172 +271,4 @@ func (f *grep_flags) fixed() bool {
 
 func (f *grep_flags) line_num() bool {
 	return f._civFn&8 == 8
-}
-
-func cli_grep(c *cli.Context) {
-	filename := c.String("filename")
-	if filename == "" {
-		// c.App.Writer.Write([]byte("filename is empty\n"))
-		os.Exit(1)
-	}
-	file, err := os.Open(filename)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer file.Close()
-	scanner := bufio.NewScanner(file)
-
-	pattern := c.String("pattern")
-
-	flags := &grep_flags{
-		_after:   c.Int("A"),
-		_before:  c.Int("B"),
-		_context: c.Int("C"),
-		_civFn:   0,
-	}
-
-	if c.Int("C") != 0 {
-		flags._after = flags._context
-		flags._before = flags._context
-	}
-
-	if c.Bool("c") {
-		flags.set_count()
-	}
-	if c.Bool("i") {
-		flags.set_ignore_case()
-		pattern = "(?i)" + pattern
-	}
-	if c.Bool("v") {
-		flags.set_invert()
-	}
-	if c.Bool("F") {
-		flags.set_fixed()
-	}
-	if c.Bool("n") {
-		flags.set_line_num()
-	}
-
-	_, _ = grep(scanner, pattern, flags)
-}
-
-func load_all_file(scanner *bufio.Scanner) []string {
-  res := []string{}
-	for scanner.Scan() {
-		res = append(res, scanner.Text())
-  }
-  return res
-}
-
-func fixed_grep(scanner *bufio.Scanner, pattern string, f flags) ([]byte, error) {
-	line_num := 0
-	for scanner.Scan() {
-		txt := scanner.Text()
-		line_num++
-		if txt == pattern {
-			if f.line_num() {
-				fmt.Printf("%d: ", line_num)
-			}
-			fmt.Printf("%s\n", txt)
-		}
-	}
-	return []byte{}, nil
-}
-
-func print_after(i, idx int, file[]string) {
-  for j := 1; j <= i; j++ {
-    if idx+j > len(file) {
-      break
-    }
-    fmt.Println(file[idx+j])
-  }
-}
-
-func print_before(i, idx int, file[]string) {
-  for j := i; j > 0; j-- {
-    if idx-j < 0 {
-      break
-    }
-    fmt.Println(file[idx-j])
-  }
-}
-
-func grep_context(file[]string, pattern *regexp.Regexp, f flags) {
-  for i := range file {
-    if pattern.MatchString(file[i]) {
-      print_before(f.before(), i, file)
-      fmt.Println(file[i])
-      print_after(f.after(), i, file)
-    }
-  }
-}
-
-func grep(scanner *bufio.Scanner, pattern string, f flags) ([]byte, error) {
-	if pattern == "" {
-		return []byte{}, nil
-	}
-	if f.fixed() {
-		fixed_grep(scanner, pattern, f)
-		return []byte{}, nil
-	}
-	var search_pattern = regexp.MustCompile(pattern)
-  if f.after() > 0 || f.before() > 0 || f.context() > 0 {
-    strings := load_all_file(scanner)
-    grep_context(strings, search_pattern, f)
-		return []byte{}, nil
-  }
-	line_num := 0
-	count := 0
-	for scanner.Scan() {
-		txt := scanner.Text()
-		line_num++
-		if !search_pattern.MatchString(txt) && f.invert() {
-			if f.count() {
-				count++
-				continue
-			}
-			if f.line_num() {
-				fmt.Printf("%d:", line_num)
-			}
-      color.Red(txt)
-		} else {
-			if search_pattern.MatchString(txt) && !f.invert() {
-				if f.count() {
-					count++
-					continue
-				}
-				if f.line_num() {
-					fmt.Printf("%d:", line_num)
-				}
-        color.Red(txt)
-			}
-		}
-	}
-	if f.count() {
-		fmt.Println(count)
-	}
-	return []byte{}, nil
-}
-
-func main() {
-	app := cli.NewApp()
-	app.Action = cli_grep
-	app.Name = "grep utility"
-	app.Description = "a grep utility for L2 course at WB"
-	app.UsageText = "grep --filename [filename]"
-	app.Flags = []cli.Flag{
-		cli.StringFlag{Name: "filename", Usage: "a file to search"},
-		cli.StringFlag{Name: "pattern", Usage: "a pattern to search"},
-		cli.BoolFlag{Name: "n", Usage: "line num, напечатать номер строки"},
-		cli.BoolFlag{Name: "v", Usage: "invert search"},
-		cli.BoolFlag{Name: "F", Usage: "fixed search"},
-		cli.BoolFlag{Name: "i", Usage: "case insensitive search"},
-		cli.BoolFlag{Name: "c", Usage: "count matching strings"},
-		cli.IntFlag{Name: "A", Usage: "print N strings after match"},
-		cli.IntFlag{Name: "B", Usage: "print N strings before match"},
-		cli.IntFlag{Name: "C", Usage: "print N strings before and after match"},
-	}
-	app.Author = "Artemii"
-	app.Email = "vllemail@icloud.com"
-	app.Run(os.Args)
 }
