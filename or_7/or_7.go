@@ -9,17 +9,14 @@ import (
 func or (channels ...<- chan interface{}) <- chan interface{} {
   or_ch := make(chan interface{})
   for  {
-    for _, val := range channels {
+    for idx := range channels {
       select {
-      case x, ok := <-val:
+      case x, ok := <-channels[idx]:
         if ok {
           fmt.Printf("Value %d was read.\n", x)
         } else {
           fmt.Println("Channel closed!")
-          go func() {
-            fmt.Println("Channel closed!")
-            defer close(or_ch)
-          }()
+          close(or_ch)
           return or_ch
         }
       default:
@@ -27,7 +24,6 @@ func or (channels ...<- chan interface{}) <- chan interface{} {
       }
     }
   }
-  return or_ch
 }
 
 func main() {

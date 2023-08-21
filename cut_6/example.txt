@@ -1,0 +1,7 @@
+Name:Company:Price:Ganre:Multiplayer
+Item1:Company1:60000$:Ganre1:Yes
+Item2:Company2:70000$:Ganre2:Yes
+Item3:Company3:90000$:Ganre1:Yes
+Item4:Company4:90000$:Ganre1:Yes
+Item5:Company5:110000$:Ganre1:Yes
+Item6:Company6:410000$:Ganre2:Yes
