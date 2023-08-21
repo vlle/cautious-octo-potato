@@ -1,5 +1,4 @@
 package main
-
 /*
 Необходимо реализовать свой собственный UNIX-шелл-утилиту с поддержкой ряда простейших команд:
 
@@ -23,7 +22,7 @@ import (
 	"fmt"
   "strings"
 	"syscall"
-
+  "os/exec"
 	// "log"
 	"os"
 
@@ -32,6 +31,7 @@ import (
 )
 
 func pwd() (string, int) {
+  // syscall.ForkExec()
   dir, err := syscall.Getwd()
   if err != nil {
     return dir, 1
@@ -47,12 +47,16 @@ func cd(dir string) (string, int) {
     return ret, 1
   }
 	return ret, 0
-
 }
 
-func echo() (string, int) {
+func echo(input ...string) (string, int) {
 	err := 0
   ret := ""
+  if len(input) == 1 {
+    return ret, err
+  } else {
+    fmt.Println(strings.Join(input[1:], " "))
+  }
 	return ret, err
 }
 
@@ -63,50 +67,66 @@ func kill() (string, int) {
 }
 
 func ps() (string, int) {
-	err := 0
+  exec := exec.Command("/bin/sh", "-c", "ps")
+  ret, err := exec.Output()
+
+  if err != nil {
+    fmt.Println(err)
+    return string(ret), 1
+  }
+	return string(ret), 0
+}
+
+func process_cmd(cmd string, args ...string) string {
+  process_code := 1
   ret := ""
-	return ret, err
+  output := ""
+  arg := strings.Split(cmd, " ")
+  switch arg[0] {
+  case "pwd":
+    ret, process_code = pwd()
+  case "cd":
+    if len(arg) < 2 {
+      ret, process_code = cd("")
+    } else {
+      ret, process_code = cd(arg[1])
+    }
+  case "echo":
+    ret, process_code = echo(arg...)
+  case "kill":
+    ret, process_code = kill()
+  case "ps":
+    ret, process_code = ps()
+  }
+  if process_code != 0 {
+    output += color.RedString(">")
+  } else {
+    output += color.GreenString(">")
+  }
+  output += ret
+
+  fmt.Printf("%s\n", output)
+  return output
 }
 
 func shell() {
-	scan := bufio.NewScanner(os.Stdin)
-	process_code := 1
-	for {
-		scan.Scan()
-		cmd := scan.Text()
-		if cmd == "\\quit" || scan.Err() != nil || cmd == "" {
-			break
-		}
-    // if strings.Contains(cmd, "|") {
-    // }
-    ret := ""
-    output := ""
-    arg := strings.Split(cmd, " ")
-		switch arg[0] {
-		case "pwd":
-			ret, process_code = pwd()
-		case "cd":
-      if len(arg) < 2 {
-        ret, process_code = cd("")
-      } else {
-        ret, process_code = cd(arg[1])
-      }
-    case "echo":
-      ret, process_code = echo()
-    case "kill":
-      ret, process_code = kill()
-    case "ps":
-      ret, process_code = ps()
+  scan := bufio.NewScanner(os.Stdin)
+  for {
+    scan.Scan()
+    cmd := scan.Text()
+    if cmd == "\\quit" || scan.Err() != nil || cmd == "" {
+      break
     }
-    if process_code != 0 {
-      output += color.RedString(">")
+    if strings.Contains(cmd, "|") {
+      // cmds := strings.Split(cmd, "|")
+      // arg := strings.Split(cmd, " ")
+      // for i, cmd := range cmds {
+      //   args = process_cmd(cmd)
+      // }
     } else {
-      output += color.GreenString(">")
+      arg := strings.Split(cmd, " ")
+      process_cmd(cmd, arg...)
     }
-    output += ret
-
-    fmt.Printf("%s\n", output)
-    process_code = 1
   }
 }
 
