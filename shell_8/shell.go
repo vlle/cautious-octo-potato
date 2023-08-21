@@ -164,10 +164,13 @@ func shell() {
       break
     }
     if strings.Contains(cmd, "|") {
-      // cmds := strings.Split(cmd, "|")
-      // arg := strings.Split(cmd, " ")
-      // for i, cmd := range cmds {
-      //   args = process_cmd(cmd)
+      // for i, cmd := range strings.Split(cmd, "|") {
+      //   cmd = strings.TrimSpace(cmd)
+      //   if i == 0 {
+      //      process_cmd(cmd)
+      //   } else {
+      //     process_cmd(cmd, "1")
+      //   }
       // }
     } else {
       arg := strings.Split(cmd, " ")
