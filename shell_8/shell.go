@@ -31,7 +31,6 @@ import (
 )
 
 func pwd() (string, int) {
-  // syscall.ForkExec()
   dir, err := syscall.Getwd()
   if err != nil {
     return dir, 1
@@ -55,15 +54,20 @@ func echo(input ...string) (string, int) {
   if len(input) == 1 {
     return ret, err
   } else {
-    fmt.Println(strings.Join(input[1:], " "))
+    fmt.Println(strings.Join(input[1:], ""))
   }
 	return ret, err
 }
 
-func kill() (string, int) {
-	err := 0
-  ret := ""
-	return ret, err
+func kill(proc_id string) (string, int) {
+  exec := exec.Command("/bin/sh", "-c", "kill", proc_id)
+  ret, err := exec.Output()
+
+  if err != nil {
+    fmt.Println(err)
+    return string(ret), 1
+  }
+	return string(ret), 0
 }
 
 func ps() (string, int) {
@@ -77,26 +81,68 @@ func ps() (string, int) {
 	return string(ret), 0
 }
 
+func forkExecWrapper(args ...string) int {
+    possible_path := "/bin/" + args[0]
+    command := exec.Command(possible_path, args[1:]...)
+    stdout, err := command.StdoutPipe()
+    if err != nil {
+      fmt.Println(err)
+      return 1
+    }
+    stderr, err := command.StderrPipe()
+    if err != nil {
+      fmt.Println(err)
+      return 1
+    }
+    err = command.Start()
+    if err != nil {
+      fmt.Println(err)
+      return 1
+    } else {
+      go func() {
+        output := make([]byte, 100)
+        _, err := stdout.Read([]byte(output))
+        if err != nil {
+          fmt.Println(err)
+        }
+        err_output := make([]byte, 100)
+        _, err = stderr.Read([]byte(err_output))
+        if err != nil {
+          fmt.Println(err)
+        }
+        fmt.Printf("%s\n", output)
+        fmt.Printf("%s\n", err_output)
+        err = command.Wait()
+        if err != nil {
+          fmt.Println(err)
+        }
+      }()
+    }
+    return 0
+}
+
 func process_cmd(cmd string, args ...string) string {
   process_code := 1
   ret := ""
   output := ""
-  arg := strings.Split(cmd, " ")
-  switch arg[0] {
+  arg := args[0]
+  switch arg {
   case "pwd":
     ret, process_code = pwd()
   case "cd":
     if len(arg) < 2 {
       ret, process_code = cd("")
     } else {
-      ret, process_code = cd(arg[1])
+      ret, process_code = cd(args[1])
     }
   case "echo":
-    ret, process_code = echo(arg...)
+    ret, process_code = echo(args[1:]...)
   case "kill":
-    ret, process_code = kill()
+    ret, process_code = kill(args[1])
   case "ps":
     ret, process_code = ps()
+  default:
+    process_code = forkExecWrapper(args...)
   }
   if process_code != 0 {
     output += color.RedString(">")
