@@ -9,45 +9,42 @@ import "fmt"
 */
 
 type WaterHolder struct {
-
 }
 
 type CoffeeRoaster struct {
-
 }
 
 type CoffeeGrinder struct {
-
 }
 
 func (c *CoffeeRoaster) RoastCoffee() {
-  fmt.Println("roasting coffee..")
+	fmt.Println("roasting coffee..")
 }
 
 func (g *CoffeeGrinder) GrindCoffee() {
-  fmt.Println("grinding coffee..")
+	fmt.Println("grinding coffee..")
 }
 
 func (w *WaterHolder) BoilWater() {
-  fmt.Println("boiling water..")
+	fmt.Println("boiling water..")
 }
 
 func (w *WaterHolder) PouringWater() {
-  fmt.Println("pouring water.. ")
+	fmt.Println("pouring water.. ")
 }
 
 type ElectricCoffeeMaker_Facade struct {
-  w *WaterHolder
-  c *CoffeeRoaster
-  g *CoffeeGrinder
+	w *WaterHolder
+	c *CoffeeRoaster
+	g *CoffeeGrinder
 }
 
 func (facade *ElectricCoffeeMaker_Facade) MakeCoffee() {
-  facade.c.RoastCoffee()
-  facade.g.GrindCoffee()
+	facade.c.RoastCoffee()
+	facade.g.GrindCoffee()
 
-  facade.w.BoilWater()
-  facade.w.PouringWater()
+	facade.w.BoilWater()
+	facade.w.PouringWater()
 
-  fmt.Println("Coffee ready")
+	fmt.Println("Coffee ready")
 }

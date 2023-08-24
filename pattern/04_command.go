@@ -8,57 +8,55 @@ import "fmt"
 	https://en.wikipedia.org/wiki/Command_pattern
 */
 
-
 type Command interface {
-  execute()
+	execute()
 }
 
 type Button struct {
-  cmd Command
+	cmd Command
 }
 
-
 type Heater interface {
-  heatRoom()
-  coolRoom()
+	heatRoom()
+	coolRoom()
 }
 
 type AC struct {
-  is_heating bool
+	is_heating bool
 }
 
-func (a* AC) heatRoom() {
-  fmt.Println("heating..")
-  a.is_heating = true
+func (a *AC) heatRoom() {
+	fmt.Println("heating..")
+	a.is_heating = true
 }
 
-func (a* AC) coolRoom() {
-  fmt.Println("cooling..")
-  a.is_heating = false
+func (a *AC) coolRoom() {
+	fmt.Println("cooling..")
+	a.is_heating = false
 }
 
 type HeatCommand struct {
-  ac *AC
+	ac *AC
 }
 
 func (h HeatCommand) execute() {
-  h.ac.heatRoom()
+	h.ac.heatRoom()
 }
 
 type CoolCommand struct {
-  ac *AC
+	ac *AC
 }
 
 func (h CoolCommand) execute() {
-  h.ac.coolRoom()
+	h.ac.coolRoom()
 }
 
 func example() {
-  ac := &AC{}
-  hc := HeatCommand{ac:ac}
-  heat_button := Button{cmd:hc}
-  cc := CoolCommand{ac:ac}
-  cool_button := Button{cmd:cc}
-  heat_button.cmd.execute()
-  cool_button.cmd.execute()
+	ac := &AC{}
+	hc := HeatCommand{ac: ac}
+	heat_button := Button{cmd: hc}
+	cc := CoolCommand{ac: ac}
+	cool_button := Button{cmd: cc}
+	heat_button.cmd.execute()
+	cool_button.cmd.execute()
 }
