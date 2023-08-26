@@ -12,11 +12,9 @@
 
 package main
 
-// import "strings"
 
-func f2(s string) string {
+func unpack(s string) string {
 	s2 := ""
-	// var v strings.Builder
 	var letter rune = 0
 	for _, val := range s {
 		if int(val)-'0' >= 0 && int(val)-'0' <= 9 {
