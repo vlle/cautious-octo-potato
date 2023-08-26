@@ -31,201 +31,203 @@ GET /events_for_month
 */
 
 import (
+	"database/sql"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
-	"strings"
-	"sync"
+	"os"
 	"time"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 const (
-	layout = "2006-01-02"
+	Layout              = "2006-01-02"
+	Driver              = "sqlite3"
+	MsgMethodNotAllowed = `{"error": "method not allowed"}`
+	MsgBadRequest       = `{"error": "bad request"}`
 )
 
-type event struct {
-	Date string `json:"date"`
+type DB struct {
+	Db *sql.DB
 }
 
-func IsoWeek(t time.Time) (int, int) {
-	isoYear, isoWeek := t.ISOWeek()
-	return isoYear, isoWeek
+func ParseTime(date string) (time.Time, error) {
+	return time.Parse(Layout, date)
 }
 
-func StringIsoWeek(t time.Time) string {
-	isoYear, isoWeek := t.ISOWeek()
-	return fmt.Sprintf("%s%s", fmt.Sprint(isoYear), fmt.Sprint(isoWeek))
-}
-
-type Cache struct {
-	cache map[string]string
-	mutex sync.RWMutex
-}
-
-func NewCache() *Cache {
-	return &Cache{
-		cache: make(map[string]string),
+func (d *DB) CreateEvent(date time.Time, name string) error {
+	day := date.Day()
+	month := int(date.Month())
+	year, week := date.ISOWeek()
+	stmt, err := d.Db.Prepare("INSERT INTO events(day, month, week, year, name) values(?, ?, ?, ?, ?)")
+	if err != nil {
+		return err
 	}
+	defer stmt.Close()
+	_, err = stmt.Exec(day, month, week, year, name)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
-func (c *Cache) WriteToCache(key string, value time.Time) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	c.cache[key] = value.String()
+type event_json struct {
+	Date string `json:"date"`
+	Name string `json:"name"`
 }
 
-func (c *Cache) SaveEventForWeek(value time.Time) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	key := StringIsoWeek(value)
-	c.cache[key] += value.String() + ","
-
-	fmt.Println(c.cache[key])
-	fmt.Println(key)
+type request_answer struct {
+	Result string `json:"result"`
 }
 
-func (c *Cache) GetFromCache(key string) string {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
-	return c.cache[key]
-}
-
-func (c *Cache) EventsForWeek(value time.Time) string {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
-	key := StringIsoWeek(value)
-	fmt.Println(key)
-	return c.cache[key]
-}
-
-func (c *Cache) EventsForMonth(month string) string {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
-	return c.cache[month]
+type request_error struct {
+	Error string `json:"error"`
 }
 
 type create_event struct {
-	cache *Cache
-}
-
-func parse_http_json(r *http.Request) string {
-	var event event
-	err := json.NewDecoder(r.Body).Decode(&event)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return event.Date
+	db *DB
 }
 
 func (s *create_event) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// user_id=3&date=2019-09-09
+	encoder := json.NewEncoder(w)
 	w.Header().Set("Content-Type", "application/json")
-	log.Println(r.Body)
-	response_method := r.Method
-	if response_method != "POST" {
+	if r.Method != "POST" {
 		w.WriteHeader(http.StatusMethodNotAllowed)
-		w.Write([]byte(`{"message": "method not allowed"}`))
+		encoder.Encode(request_error{Error: "method not allowed"})
 		return
 	}
-	layout := "2006-01-02"
-	dateStr := parse_http_json(r)
-	date, _ := time.Parse(layout, dateStr)
-	s.cache.WriteToCache(dateStr, date)
-	s.cache.SaveEventForWeek(date)
-	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte(`{"status": "created"}`))
-}
-
-type update_event struct {
-	cache *Cache
-}
-
-func (s *update_event) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	response_method := r.Method
-	if response_method != "PUT" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		w.Write([]byte(`{"message": "method not allowed"}`))
+	decoder := json.NewDecoder(r.Body)
+	event := event_json{}
+	err := decoder.Decode(&event)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		encoder.Encode(request_error{Error: "bad request"})
+		return
+	}
+	if event.Date == "" || event.Name == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		encoder.Encode(request_error{Error: "bad request"})
 		return
 	}
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"message": "hello world"}`))
-}
-
-type delete_event struct {
-	cache *Cache
-}
-type events_for_day struct {
-	cache *Cache
-}
-
-func (s *events_for_day) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	response_method := r.Method
-	if response_method != "GET" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		w.Write([]byte(`{"message": "method not allowed"}`))
+	time, err := ParseTime(event.Date)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		encoder.Encode(request_error{Error: "bad request"})
 		return
 	}
-	var sb strings.Builder
-	query := r.URL.Query()
-	log.Println(query)
-	msg := query.Get("date")
-	log.Println(msg)
-	events := s.cache.GetFromCache(msg)
-	if events == "" {
-		w.WriteHeader(http.StatusNotFound)
-	} else {
-		w.WriteHeader(http.StatusOK)
-	}
-	sb.WriteString(`{"events": [`)
-	sb.WriteString(events)
-	sb.WriteString(`]}`)
-	w.Write([]byte(sb.String()))
-}
-
-type events_for_week struct {
-	cache *Cache
-}
-
-func (s *events_for_week) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	response_method := r.Method
-	if response_method != "GET" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		w.Write([]byte(`{"message": "method not allowed"}`))
+	err = s.db.CreateEvent(time, event.Name)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		encoder.Encode(request_error{Error: "internal server error"})
 		return
 	}
-	query := r.URL.Query()
-	date := query.Get("date")
-	parsed_date, _ := time.Parse(layout, date)
-	fmt.Println(parsed_date)
-	var sb strings.Builder
-	events := s.cache.EventsForWeek(parsed_date)
-	if events == "" {
-		w.WriteHeader(http.StatusNotFound)
-		sb.WriteString(`{"events": []}`)
-	} else {
-		w.WriteHeader(http.StatusOK)
-		sb.WriteString(`{"events": [`)
-		sb.WriteString(events)
-		sb.WriteString(`]}`)
-		w.Write([]byte(sb.String()))
-	}
+	encoder.Encode(request_answer{Result: "created"})
+	log.Println("Create event: ", event)
 }
 
-type events_for_month struct{}
+// type update_event struct {
+// 	cache *Cache
+// }
+//
+// func (s *update_event) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+// 	w.Header().Set("Content-Type", "application/json")
+// 	response_method := r.Method
+// 	if response_method != "POST" {
+// 		w.WriteHeader(http.StatusMethodNotAllowed)
+// 		w.Write([]byte(`{"message": "method not allowed"}`))
+// 		return
+// 	}
+//   dateStr := parse_http_json(r)
+//   date, _ := time.Parse(layout, dateStr)
+//   s.cache.WriteToCache(dateStr, date)
+//   s.cache.SaveEventForWeek(date)
+//   w.WriteHeader(http.StatusOK)
+//   w.Write([]byte(`{"status": "updated"}`))
+// }
+//
+// type delete_event struct {
+// 	cache *Cache
+// }
+// type events_for_day struct {
+// 	cache *Cache
+// }
+//
+// func (s *events_for_day) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+// 	w.Header().Set("Content-Type", "application/json")
+// 	response_method := r.Method
+// 	if response_method != "GET" {
+// 		w.WriteHeader(http.StatusMethodNotAllowed)
+// 		w.Write([]byte(`{"message": "method not allowed"}`))
+// 		return
+// 	}
+// 	var sb strings.Builder
+// 	query := r.URL.Query()
+// 	msg := query.Get("date")
+// 	events := s.cache.GetFromCache(msg)
+// 	if events == "" {
+// 		w.WriteHeader(http.StatusNotFound)
+// 	} else {
+// 		w.WriteHeader(http.StatusOK)
+// 	}
+// 	sb.WriteString(`{"events": [`)
+// 	sb.WriteString(events)
+// 	sb.WriteString(`]}`)
+// 	w.Write([]byte(sb.String()))
+// }
+//
+// type events_for_week struct {
+// 	cache *Cache
+// }
+//
+// func (s *events_for_week) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+// 	w.Header().Set("Content-Type", "application/json")
+// 	response_method := r.Method
+// 	if response_method != "GET" {
+// 		w.WriteHeader(http.StatusMethodNotAllowed)
+// 		w.Write([]byte(`{"message": "method not allowed"}`))
+// 		return
+// 	}
+// 	query := r.URL.Query()
+// 	date := query.Get("date")
+// 	parsed_date, _ := time.Parse(layout, date)
+// 	var sb strings.Builder
+// 	events := s.cache.EventsForWeek(parsed_date)
+// 	if events == "" {
+// 		w.WriteHeader(http.StatusNotFound)
+// 		sb.WriteString(`{"events": []}`)
+// 	} else {
+// 		w.WriteHeader(http.StatusOK)
+// 		sb.WriteString(`{"events": [`)
+// 		sb.WriteString(events)
+// 		sb.WriteString(`]}`)
+// 		w.Write([]byte(sb.String()))
+// 	}
+// }
+//
+// type events_for_month struct{}
 
 func main() {
-	cache := NewCache()
-	s := &create_event{cache: cache}
+	// cache := NewCache()
+	db_name := os.Getenv("DB_NAME")
+	if db_name == "" {
+		db_name = "events.db"
+	}
+	db, err := sql.Open(Driver, db_name)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+	db_struct := &DB{Db: db}
+
+	s := &create_event{db: db_struct}
 	http.Handle("/create_event", s)
-	u := &update_event{cache: cache}
-	http.Handle("/update_event", u)
-	e_day := &events_for_day{cache: cache}
-	http.Handle("/events_for_day", e_day)
-	e_week := &events_for_week{cache: cache}
-	http.Handle("/events_for_week", e_week)
+	// u := &update_event{cache: cache}
+	// http.Handle("/update_event", u)
+	// e_day := &events_for_day{cache: cache}
+	// http.Handle("/events_for_day", e_day)
+	// e_week := &events_for_week{cache: cache}
+	// http.Handle("/events_for_week", e_week)
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
