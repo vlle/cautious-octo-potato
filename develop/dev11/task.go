@@ -50,7 +50,6 @@ const (
 	MsgBadRequest       = `{"error": "bad request"}`
 )
 
-
 func main() {
 	db_name := os.Getenv("DB_NAME")
 	if db_name == "" {
@@ -65,26 +64,36 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-  _, err = db.Exec("CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY AUTOINCREMENT, day INTEGER, month INTEGER, week INTEGER, year INTEGER, name TEXT)")
-  if err != nil {
-    log.Fatal(err)
-  }
+	_, err = db.Exec("CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY AUTOINCREMENT, day INTEGER, month INTEGER, week INTEGER, year INTEGER, name TEXT)")
+	if err != nil {
+		log.Fatal(err)
+	}
 	defer db.Close()
 	db_struct := &DB{Db: db}
 
+	mux := http.NewServeMux()
 	s := &create_event{db: db_struct}
-	http.Handle("/create_event", s)
+	mux.Handle("/create_event", s)
 	u := &update_event{db: db_struct}
-	http.Handle("/update_event", u)
+	mux.Handle("/update_event", u)
 	d := &delete_event{db: db_struct}
-	http.Handle("/delete_event", d)
+	mux.Handle("/delete_event", d)
 	e_day := &events_for_day{db: db_struct}
-	http.Handle("/events_for_day", e_day)
+	mux.Handle("/events_for_day", e_day)
 	e_week := &events_for_week{db: db_struct}
-	http.Handle("/events_for_week", e_week)
+	mux.Handle("/events_for_week", e_week)
 	e_month := &events_for_month{db: db_struct}
-	http.Handle("/events_for_month", e_month)
-	log.Fatal(http.ListenAndServe(port, nil))
+	mux.Handle("/events_for_month", e_month)
+	handler := Logging(mux)
+	log.Fatal(http.ListenAndServe(port, handler))
+}
+
+func Logging(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		start := time.Now()
+		next.ServeHTTP(w, req)
+		log.Printf("%s %s %s", req.Method, req.RequestURI, time.Since(start))
+	})
 }
 
 type DB struct {
@@ -308,6 +317,7 @@ func (s *update_event) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		encoder.Encode(request_error{Error: "bad request"})
 		return
 	}
+
 	if int_id == 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		log.Println("Error 2: ", err)
@@ -412,7 +422,7 @@ func (s *events_for_day) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	events_joined := strings.Join(events, ", ")
 	encoder.Encode(request_answer{Result: events_joined})
-  log.Println("Events for day: ", events_joined)
+	log.Println("Events for day: ", events_joined)
 }
 
 type events_for_week struct {
@@ -451,7 +461,7 @@ func (s *events_for_week) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	events_joined := strings.Join(events, ", ")
 	encoder.Encode(request_answer{Result: events_joined})
-  log.Println("Events for week: ", events_joined)
+	log.Println("Events for week: ", events_joined)
 }
 
 type events_for_month struct {
@@ -489,5 +499,5 @@ func (s *events_for_month) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	events_joined := strings.Join(events, ", ")
 	encoder.Encode(request_answer{Result: events_joined})
-  log.Println("Events for month: ", events_joined)
+	log.Println("Events for month: ", events_joined)
 }
